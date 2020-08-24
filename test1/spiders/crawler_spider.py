@@ -23,11 +23,17 @@ class CrawlerSpider(Spider):
 
             url = urljoin(response.url, book)
             yield Request(url, callback=self.parse_info, meta={'book_id': book_id, 'link': url})
+        next_page = Selector(response).xpath(
+            "//*[contains(@rel , 'next')]/@href").extract_first()
+        next_url = urljoin(response.url, next_page)
+        yield Request(next_url, callback=self.parse)
 
     def parse_info(self, response):
         info = Selector(response).xpath('//div[@class="last col"]')
+        # reviews = Selector(response).xpath(
+        #     '//div[@id="bookReviews"]/div[@class="friendReviews elementListBrown"]')
         reviews = Selector(response).xpath(
-            '//div[@id="bookReviews"]/div[@class="friendReviews elementListBrown"]')
+            "//*[contains(@class , 'friendReviews elementListBrown')]")
 
         item = Test1Item()
         item['book_id'] = response.meta['book_id']
@@ -60,17 +66,25 @@ class CrawlerSpider(Spider):
             review_content = review.xpath(
                 'div/div/div/div[@class="reviewText stacked"]/span/span/text()').extract_first()
 
-            comments.append({'ID User': user_id,
-                             'Name User': name,
-                             'Rate': rate,
-                             'Review content': review_content,
-                             'Date post': date,
-                             })
-        item['Reviews'] = comments
+            see_review = review.xpath(
+                'div/div/link/@href').extract_first()
 
+            commentsUser = {'ID User': user_id,
+                            'Name User': name,
+                            'Rate': rate,
+                            'Review content': review_content,
+                            'Date post': date,
+                            'List Comment': None
+                            }
+            yield Request(see_review, callback=self.get_comment, meta={'item': item, 'commentsUser': commentsUser})
+            comments.append(commentsUser)
+        item['Reviews'] = comments
         yield item
 
     def get_comment(self, response):
+        item = response.meta['item']
+        commentsUser = response.meta['commentsUser']
+
         comments = Selector(response).xpath(
             '//div[@id="comment_list"]/div[@class="comment u-anchorTarget"]')
         list_comment = []
@@ -80,6 +94,6 @@ class CrawlerSpider(Spider):
             for element in info_comment:
                 if len(element.strip()):
                     list_comment.append(element.strip())
-        yield {
-            "List comments": list_comment
-        }
+
+        commentsUser['List Comment'] = list_comment
+        yield commentsUser
